@@ -1,6 +1,5 @@
 # streamlit run chat.py
 
-
 import os
 from dotenv import load_dotenv
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -14,14 +13,13 @@ from better_profanity import Profanity
 from google.generativeai import GenerativeModel
 import google.generativeai as genai
 from PIL import Image
-
+import speech_recognition as sr  # Added for voice input
 
 load_dotenv()
 api_key = os.getenv("GOOGLE_API_KEY")
 if not api_key:
     raise ValueError("GOOGLE_API_KEY not found in environment variables")
 genai.configure(api_key=api_key)
-
 
 pf = Profanity()
 
@@ -32,13 +30,13 @@ def is_query_appropriate(query):
 def initialize_file_chatbot(file_path):
     loader = PyPDFLoader(file_path)
     docs = loader.load()
-    
+
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     documents = text_splitter.split_documents(docs)
-    
+
     embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
     db = FAISS.from_documents(documents, embeddings)
-    
+
     prompt_template = """
     You are an AI assistant with knowledge limited to the provided context. Use the following context to answer the question. If the question is unrelated to the context, respond with "Sorry, not much information available on that topic."
 
@@ -49,7 +47,7 @@ def initialize_file_chatbot(file_path):
     Answer:
     """
     prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
-    
+
     llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.7)
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
@@ -60,15 +58,19 @@ def initialize_file_chatbot(file_path):
     )
     return qa_chain
 
-
 def process_image_query(image_path, query):
     img = Image.open(image_path)
-
     model = GenerativeModel("gemini-1.5-pro")
-    
     response = model.generate_content([query, img])
     return response.text
 
+# Added function to get voice input from microphone
+def get_voice_input():
+    recognizer = sr.Recognizer()
+    with sr.Microphone() as source:
+        st.info("Listening... Please speak now")
+        audio = recognizer.listen(source, timeout=5)
+    return recognizer.recognize_google(audio)
 
 def main():
     st.title("Multi-Modal Chatbot")
@@ -77,7 +79,7 @@ def main():
 
     if mode == "File (PDF)":
         file_source = st.radio("How would you like to provide the file?", ("Upload", "Enter Path"))
-        
+
         if file_source == "Upload":
             uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
             if uploaded_file:
@@ -93,8 +95,21 @@ def main():
                 with st.spinner("Initializing file chatbot..."):
                     st.session_state.qa_chain = initialize_file_chatbot(file_path)
                     st.session_state.file_path = file_path
-            
-            query = st.text_input("Enter your question about the PDF:")
+
+            query = None  # Initialize query variable
+
+            text_query = st.text_input("Enter your question about the PDF:")
+            if text_query:
+                query = text_query
+
+            if st.button("Click to Speak"):
+                try:
+                    voice_input = get_voice_input()
+                    st.success(f"You said: {voice_input}")
+                    query = voice_input
+                except:
+                    st.error("Sorry, could not understand your voice.")
+
             if query:
                 if is_query_appropriate(query):
                     with st.spinner("Generating answer..."):
@@ -104,9 +119,8 @@ def main():
                     st.error("Sorry, inappropriate query detected")
 
     elif mode == "Image":
-
         image_source = st.radio("How would you like to provide the image?", ("Upload", "Enter Path"))
-        
+
         if image_source == "Upload":
             uploaded_image = st.file_uploader("Upload an image", type=["jpg", "png", "jpeg"])
             if uploaded_image:
@@ -119,7 +133,20 @@ def main():
             image_path = st.text_input("Enter the path to your image:")
 
         if 'image_path' in locals() and image_path:
-            query = st.text_input("Enter your question about the image:")
+            query = None
+
+            text_query = st.text_input("Enter your question about the image:")
+            if text_query:
+                query = text_query
+
+            if st.button("Click to Speak"):
+                try:
+                    voice_input = get_voice_input()
+                    st.success(f"You said: {voice_input}")
+                    query = voice_input
+                except:
+                    st.error("Sorry, could not understand your voice.")
+
             if query:
                 if is_query_appropriate(query):
                     with st.spinner("Generating answer..."):
