@@ -7,3 +7,4 @@ streamlit
 better-profanity
 faiss-cpu
 pillow
+pyttsx3
