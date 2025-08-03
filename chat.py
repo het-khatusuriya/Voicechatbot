@@ -1,5 +1,6 @@
 # streamlit run chat.py
 
+
 import os
 from dotenv import load_dotenv
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -14,6 +15,7 @@ from google.generativeai import GenerativeModel
 import google.generativeai as genai
 from PIL import Image
 import speech_recognition as sr  # Added for voice input
+import pyttsx3
 
 load_dotenv()
 api_key = os.getenv("GOOGLE_API_KEY")
@@ -22,6 +24,13 @@ if not api_key:
 genai.configure(api_key=api_key)
 
 pf = Profanity()
+
+
+def text_to_speech(data):
+    engine = pyttsx3.init()
+    engine.say(data)
+    engine.runAndWait()
+
 
 def is_query_appropriate(query):
     """Check if the query contains inappropriate content using better-profanity"""
@@ -76,7 +85,7 @@ def main():
     st.title("Multi-Modal Chatbot")
     st.write("Choose whether to process a file (PDF) or an image.")
     mode = st.selectbox("Select input type:", ["File (PDF)", "Image"])
-
+    error_message = "Sorry, inappropriate query detected"
     if mode == "File (PDF)":
         file_source = st.radio("How would you like to provide the file?", ("Upload", "Enter Path"))
 
@@ -90,8 +99,11 @@ def main():
         else:
             file_path = st.text_input("Enter the path to your PDF file:")
 
-        if 'file_path' in locals() and file_path:
-            if 'qa_chain' not in st.session_state or st.session_state.get('file_path') != file_path:
+        if "file_path" in locals() and file_path:
+            if (
+                "qa_chain" not in st.session_state
+                or st.session_state.get("file_path") != file_path
+            ):
                 with st.spinner("Initializing file chatbot..."):
                     st.session_state.qa_chain = initialize_file_chatbot(file_path)
                     st.session_state.file_path = file_path
@@ -114,15 +126,19 @@ def main():
                 if is_query_appropriate(query):
                     with st.spinner("Generating answer..."):
                         answer = st.session_state.qa_chain.invoke(query)
+                        text_to_speech(answer["result"])
                         st.write("Answer:", answer["result"])
                 else:
-                    st.error("Sorry, inappropriate query detected")
+                    text_to_speech(error_message)
+                    st.error(error_message)
 
     elif mode == "Image":
         image_source = st.radio("How would you like to provide the image?", ("Upload", "Enter Path"))
 
         if image_source == "Upload":
-            uploaded_image = st.file_uploader("Upload an image", type=["jpg", "png", "jpeg"])
+            uploaded_image = st.file_uploader(
+                "Upload an image", type=["jpg", "png", "jpeg"]
+            )
             if uploaded_image:
                 image_path = os.path.join("temp", uploaded_image.name)
                 os.makedirs("temp", exist_ok=True)
@@ -151,9 +167,17 @@ def main():
                 if is_query_appropriate(query):
                     with st.spinner("Generating answer..."):
                         answer = process_image_query(image_path, query)
+                        text_to_speech(answer)
                         st.write("Answer:", answer)
                 else:
-                    st.error("Sorry, inappropriate query detected")
+                    text_to_speech(error_message)
+                    st.error(error_message)
+    if "tts_played" not in st.session_state:
+        st.session_state.tts_played = True
+        text_to_speech("Hi There!")
+        text_to_speech("I am your multi-modal chatbot! here to help!")
+        text_to_speech("Please Select input type:")
+
 
 if __name__ == "__main__":
     main()
